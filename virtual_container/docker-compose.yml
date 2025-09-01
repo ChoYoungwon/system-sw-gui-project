@@ -1,0 +1,27 @@
+services:
+  server:
+    build: .
+    container_name: socket-server
+    # command: /bin/sh -c "gcc server.c -o server && ./server"
+    # stdin_open: true
+
+    # 터미널 활성화
+    tty: true
+
+    networks:
+      - mynetwork
+
+  client:
+    build: .
+    container_name: socket-client
+    # command: /bin/sh -c "gcc client.c -o client && sleep 1 && ./client"
+    depends_on:
+      - server
+    stdin_open: true
+    tty: true
+    
+    networks:
+      - mynetwork
+
+networks:
+  mynetwork:
