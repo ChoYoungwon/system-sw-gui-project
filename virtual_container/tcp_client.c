@@ -31,6 +31,7 @@ int main()
     memset(&c_addr, 0, sizeof(c_addr));
     c_addr.sin_family = AF_INET;
 
+    // server_host 구조체에서 IP 주소 정보를 복사
     memcpy(&c_addr.sin_addr.s_addr, server_host->h_addr_list[0], server_host->h_length);
     c_addr.sin_port = htons(PORT);
 

@@ -8,6 +8,9 @@ services:
     # 터미널 활성화
     tty: true
 
+    volumes:
+      - .:/app
+
     networks:
       - mynetwork
 
@@ -20,6 +23,9 @@ services:
     stdin_open: true
     tty: true
     
+    volumes:
+      - .:/app
+
     networks:
       - mynetwork
 
