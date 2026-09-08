@@ -1,0 +1,30 @@
+# Build outputs
+_build/
+*.o
+*.out
+a.out
+program
+Client
+Listener
+send
+receive
+debug
+fd
+gcc
+mprotect
+tcp_client
+tcp_server
+
+# IPC Keyfiles & Temporary files
+command_keyfile
+response_keyfile
+request_keyfile
+keyfile
+debug.log
+*.log
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
