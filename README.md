@@ -1,5 +1,3 @@
-# Linux System Software & GTK4 GUI File Manager
-
 > **POSIX 시스템 콜과 System V IPC(Message Queue) 기반의 비동기 GUI 파일 관리자 및 샌드박스 커스텀 셸**  
 > 프론트엔드(UI)와 백엔드(시스템 데몬)의 프로세스 분리 아키텍처를 설계하고, 시스템 보안(Directory Traversal 방어) 및 논블로킹(Non-blocking) IPC 동기화를 구현한 리눅스 시스템 소프트웨어 프로젝트입니다.
 
@@ -7,30 +5,29 @@
 
 ## 0. 목차 (Table of Contents)
 
-- [Linux System Software \& GTK4 GUI File Manager](#linux-system-software--gtk4-gui-file-manager)
-  - [0. 목차 (Table of Contents)](#0-목차-table-of-contents)
-  - [1. 프로젝트 개요 (Overview)](#1-프로젝트-개요-overview)
-  - [2. 시스템 아키텍처 \& 핵심 설계 (System Architecture)](#2-시스템-아키텍처--핵심-설계-system-architecture)
-    - [2.1 프로세스 분리 및 IPC 통신 모델](#21-프로세스-분리-및-ipc-통신-모델)
-    - [2.2 System V Message Queue 프로토콜 정의](#22-system-v-message-queue-프로토콜-정의)
-    - [2.3 논블로킹(Non-blocking) UI 비동기 동기화](#23-논블로킹non-blocking-ui-비동기-동기화)
-    - [2.4 Custom Shell 샌드박스 보안 설계](#24-custom-shell-샌드박스-보안-설계)
-  - [3. 주요 모듈 및 기술 상세 (Key Features)](#3-주요-모듈-및-기술-상세-key-features)
-    - [모듈 1: GTK4 File Manager (`dir_manage_gtk`)](#모듈-1-gtk4-file-manager-dir_manage_gtk)
-    - [모듈 2: Sandboxed Custom Shell (`custom_shell`)](#모듈-2-sandboxed-custom-shell-custom_shell)
-    - [모듈 3: IPC 분석 \& Docker 멀티 컨테이너 소켓 (`IPC`, `virtual_container`)](#모듈-3-ipc-분석--docker-멀티-컨테이너-소켓-ipc-virtual_container)
-  - [4. 기술적 난제 및 문제 해결 (Engineering Challenges \& Troubleshooting)](#4-기술적-난제-및-문제-해결-engineering-challenges--troubleshooting)
-    - [Q1. GTK4 단일 이벤트 루프에서 백엔드 IPC 대기 시 UI 프리징 현상](#q1-gtk4-단일-이벤트-루프에서-백엔드-ipc-대기-시-ui-프리징-현상)
-    - [Q2. 비어있지 않은 대용량 디렉토리 삭제 시 `rmdir` 실패 처리](#q2-비어있지-않은-대용량-디렉토리-삭제-시-rmdir-실패-처리)
-    - [Q3. 상대 경로 입력에 따른 샌드박스 경로 탈출(Directory Traversal) 취약점](#q3-상대-경로-입력에-따른-샌드박스-경로-탈출directory-traversal-취약점)
-    - [Q4. 크로스 디바이스(Cross-Device) 및 대용량 파일 이동 시 `rename()` 실패 Fallback](#q4-크로스-디바이스cross-device-및-대용량-파일-이동-시-rename-실패-fallback)
-  - [5. 기술 스택 \& 개발 환경 (Tech Stack)](#5-기술-스택--개발-환경-tech-stack)
-  - [6. 프로젝트 디렉토리 구조 (Project Structure)](#6-프로젝트-디렉토리-구조-project-structure)
-  - [7. 빌드 및 실행 가이드 (Getting Started)](#7-빌드-및-실행-가이드-getting-started)
-    - [7.1 필수 패키지 설치 (Ubuntu/Debian 기준)](#71-필수-패키지-설치-ubuntudebian-기준)
-    - [7.2 GTK File Manager 빌드 및 실행](#72-gtk-file-manager-빌드-및-실행)
-    - [7.3 Custom Shell 빌드 및 실행](#73-custom-shell-빌드-및-실행)
-    - [7.4 Virtual Container (Docker 소켓 통신) 실행](#74-virtual-container-docker-소켓-통신-실행)
+- [0. 목차 (Table of Contents)](#0-목차-table-of-contents)
+- [1. 프로젝트 개요 (Overview)](#1-프로젝트-개요-overview)
+- [2. 시스템 아키텍처 \& 핵심 설계 (System Architecture)](#2-시스템-아키텍처--핵심-설계-system-architecture)
+  - [2.1 프로세스 분리 및 IPC 통신 모델](#21-프로세스-분리-및-ipc-통신-모델)
+  - [2.2 System V Message Queue 프로토콜 정의](#22-system-v-message-queue-프로토콜-정의)
+  - [2.3 논블로킹(Non-blocking) UI 비동기 동기화](#23-논블로킹non-blocking-ui-비동기-동기화)
+  - [2.4 Custom Shell 샌드박스 보안 설계](#24-custom-shell-샌드박스-보안-설계)
+- [3. 주요 모듈 및 기술 상세 (Key Features)](#3-주요-모듈-및-기술-상세-key-features)
+  - [모듈 1: GTK4 File Manager (`dir_manage_gtk`)](#모듈-1-gtk4-file-manager-dir_manage_gtk)
+  - [모듈 2: Sandboxed Custom Shell (`custom_shell`)](#모듈-2-sandboxed-custom-shell-custom_shell)
+  - [모듈 3: IPC 분석 \& Docker 멀티 컨테이너 소켓 (`IPC`, `virtual_container`)](#모듈-3-ipc-분석--docker-멀티-컨테이너-소켓-ipc-virtual_container)
+- [4. 기술적 난제 및 문제 해결 (Engineering Challenges \& Troubleshooting)](#4-기술적-난제-및-문제-해결-engineering-challenges--troubleshooting)
+  - [Q1. GTK4 단일 이벤트 루프에서 백엔드 IPC 대기 시 UI 프리징 현상](#q1-gtk4-단일-이벤트-루프에서-백엔드-ipc-대기-시-ui-프리징-현상)
+  - [Q2. 비어있지 않은 대용량 디렉토리 삭제 시 `rmdir` 실패 처리](#q2-비어있지-않은-대용량-디렉토리-삭제-시-rmdir-실패-처리)
+  - [Q3. 상대 경로 입력에 따른 샌드박스 경로 탈출(Directory Traversal) 취약점](#q3-상대-경로-입력에-따른-샌드박스-경로-탈출directory-traversal-취약점)
+  - [Q4. 크로스 디바이스(Cross-Device) 및 대용량 파일 이동 시 `rename()` 실패 Fallback](#q4-크로스-디바이스cross-device-및-대용량-파일-이동-시-rename-실패-fallback)
+- [5. 기술 스택 \& 개발 환경 (Tech Stack)](#5-기술-스택--개발-환경-tech-stack)
+- [6. 프로젝트 디렉토리 구조 (Project Structure)](#6-프로젝트-디렉토리-구조-project-structure)
+- [7. 빌드 및 실행 가이드 (Getting Started)](#7-빌드-및-실행-가이드-getting-started)
+  - [7.1 필수 패키지 설치 (Ubuntu/Debian 기준)](#71-필수-패키지-설치-ubuntudebian-기준)
+  - [7.2 GTK File Manager 빌드 및 실행](#72-gtk-file-manager-빌드-및-실행)
+  - [7.3 Custom Shell 빌드 및 실행](#73-custom-shell-빌드-및-실행)
+  - [7.4 Virtual Container (Docker 소켓 통신) 실행](#74-virtual-container-docker-소켓-통신-실행)
 
 ---
 
