@@ -1,158 +1,210 @@
-> **POSIX 시스템 콜과 System V IPC(Message Queue) 기반의 비동기 GUI 파일 관리자 및 샌드박스 커스텀 셸**  
-> 프론트엔드(UI)와 백엔드(시스템 데몬)의 프로세스 분리 아키텍처를 설계하고, 시스템 보안(Directory Traversal 방어) 및 논블로킹(Non-blocking) IPC 동기화를 구현한 리눅스 시스템 소프트웨어 프로젝트입니다.
+# 🗂️ 리눅스 시스템 소프트웨어 프로젝트: GUI 파일 관리자 & 안전한 커스텀 셸
+
+> 리눅스 운영체제가 제공하는 기본 기능(시스템 콜)만으로 **창(GUI)이 있는 파일 관리자**와 **정해진 폴더 밖으로 나갈 수 없는 명령어 입력 프로그램(셸)** 을 C 언어로 직접 만든 프로젝트입니다.
+
+- 화면을 담당하는 프로그램과 실제 파일 작업을 하는 프로그램을 **두 개로 나누고**, 둘이 **메시지를 주고받으며** 협력하도록 만들었습니다.
+- 파일 작업이 오래 걸려도 **화면이 멈추지 않도록** 설계했습니다.
+- 사용자가 `../../` 같은 경로로 **허용되지 않은 폴더에 접근하는 것을 막는** 보안 장치를 넣었습니다.
 
 ---
 
-## 0. 목차 (Table of Contents)
+## 📖 목차
 
-- [0. 목차 (Table of Contents)](#0-목차-table-of-contents)
-- [1. 프로젝트 개요 (Overview)](#1-프로젝트-개요-overview)
-- [2. 시스템 아키텍처 \& 핵심 설계 (System Architecture)](#2-시스템-아키텍처--핵심-설계-system-architecture)
-  - [2.1 프로세스 분리 및 IPC 통신 모델](#21-프로세스-분리-및-ipc-통신-모델)
-  - [2.2 System V Message Queue 프로토콜 정의](#22-system-v-message-queue-프로토콜-정의)
-  - [2.3 논블로킹(Non-blocking) UI 비동기 동기화](#23-논블로킹non-blocking-ui-비동기-동기화)
-  - [2.4 Custom Shell 샌드박스 보안 설계](#24-custom-shell-샌드박스-보안-설계)
-- [3. 주요 모듈 및 기술 상세 (Key Features)](#3-주요-모듈-및-기술-상세-key-features)
-  - [모듈 1: GTK4 File Manager (`dir_manage_gtk`)](#모듈-1-gtk4-file-manager-dir_manage_gtk)
-  - [모듈 2: Sandboxed Custom Shell (`custom_shell`)](#모듈-2-sandboxed-custom-shell-custom_shell)
-  - [모듈 3: IPC 분석 \& Docker 멀티 컨테이너 소켓 (`IPC`, `virtual_container`)](#모듈-3-ipc-분석--docker-멀티-컨테이너-소켓-ipc-virtual_container)
-- [4. 기술적 난제 및 문제 해결 (Engineering Challenges \& Troubleshooting)](#4-기술적-난제-및-문제-해결-engineering-challenges--troubleshooting)
-  - [Q1. GTK4 단일 이벤트 루프에서 백엔드 IPC 대기 시 UI 프리징 현상](#q1-gtk4-단일-이벤트-루프에서-백엔드-ipc-대기-시-ui-프리징-현상)
-  - [Q2. 비어있지 않은 대용량 디렉토리 삭제 시 `rmdir` 실패 처리](#q2-비어있지-않은-대용량-디렉토리-삭제-시-rmdir-실패-처리)
-  - [Q3. 상대 경로 입력에 따른 샌드박스 경로 탈출(Directory Traversal) 취약점](#q3-상대-경로-입력에-따른-샌드박스-경로-탈출directory-traversal-취약점)
-  - [Q4. 크로스 디바이스(Cross-Device) 및 대용량 파일 이동 시 `rename()` 실패 Fallback](#q4-크로스-디바이스cross-device-및-대용량-파일-이동-시-rename-실패-fallback)
-- [5. 기술 스택 \& 개발 환경 (Tech Stack)](#5-기술-스택--개발-환경-tech-stack)
-- [6. 프로젝트 디렉토리 구조 (Project Structure)](#6-프로젝트-디렉토리-구조-project-structure)
-- [7. 빌드 및 실행 가이드 (Getting Started)](#7-빌드-및-실행-가이드-getting-started)
-  - [7.1 필수 패키지 설치 (Ubuntu/Debian 기준)](#71-필수-패키지-설치-ubuntudebian-기준)
-  - [7.2 GTK File Manager 빌드 및 실행](#72-gtk-file-manager-빌드-및-실행)
-  - [7.3 Custom Shell 빌드 및 실행](#73-custom-shell-빌드-및-실행)
-  - [7.4 Virtual Container (Docker 소켓 통신) 실행](#74-virtual-container-docker-소켓-통신-실행)
+1. [프로젝트 소개](#1-프로젝트-소개)
+2. [전체 구조와 핵심 설계](#3-전체-구조와-핵심-설계)
+3. [모듈별 기능 소개](#4-모듈별-기능-소개)
+4. [개발하며 부딪힌 문제와 해결 방법](#5-개발하며-부딪힌-문제와-해결-방법)
+5. [사용 기술](#6-사용-기술)
+6. [폴더 구조](#7-폴더-구조)
+7. [빌드 및 실행 방법](#8-빌드-및-실행-방법)
 
 ---
 
-## 1. 프로젝트 개요 (Overview)
+## 1. 프로젝트 소개
 
 ![GTK File Manager UI](https://github.com/user-attachments/assets/c91ab84e-d4b3-4e00-8e20-67db94615e4c)
 
-* **개발 기간**: 2024.11 ~ 2024.12
-* **핵심 목표**:
-  * 리눅스 OS의 핵심 기능(프로세스, 파일 시스템, 시그널, IPC)을 이해하고 C 언어로 직접 구현
-  * 단일 프로세스 구조의 한계를 극복하기 위해 **UI 프로세스(GTK4)** 와 **파일 제어 백엔드**를 분리한 분산형 아키텍처 적용
-  * 셸(Shell) 구현 시 경로 조작 공격(Path Traversal)을 방어하는 **보안 샌드박스(Sandbox Jail)** 구축
+| 항목 | 내용 |
+|:---|:---|
+| **개발 기간** | 2024.11 ~ 2024.12 |
+| **개발 언어** | C |
+| **실행 환경** | 리눅스 (Ubuntu 22.04 등) |
+
+### 이 프로젝트로 이루고자 한 것
+
+1. **운영체제가 실제로 어떻게 동작하는지 직접 구현 및 이해**  
+   프로그램 실행, 파일 다루기, 프로그램끼리 대화하기 등 리눅스의 핵심 기능 C 언어로 직접 호출
+2. **화면과 작업을 분리해서 멈추지 않는 프로그램 만들기**  
+   화면(UI) 프로그램과 파일 작업 프로그램을 따로 실행, 무거운 작업 중에도 창이 멈춤 방지
+3. **안전한 셸 만들기**  
+   셸에서 입력한 경로가 정해진 폴더(`/tmp/test`) 밖 가리키면 실행 막아, 실제 시스템 파일 손상 방지
+---
+[용어 참고](Terms.md)  
+---
+
+## 2. 전체 구조와 핵심 설계
+
+### 2.1 프로세스 분리
+
+GUI 프로그램이 파일 복사·삭제 같은 **무거운 작업시**, 그 작업이 끝날 때까지 **창이 멈추는 현상 발생**  
+
+```plaintext
+[화면 프로그램 (GTK)]                               [작업 프로그램 (백엔드)]
+ - 버튼, 목록 표시                                    - 실제 파일 작업 수행
+ - 사용자 입력 받기                                   - 결과 알려주기
+
+        ── ① 명령 우편함: "이 폴더 삭제해줘" ──────────▶
+        ◀────────── ② 응답 우편함: "success" / "failed" ──
+```
+
+- **자동 실행과 종료**  
+  화면 프로그램을 켜면 `fork()`(프로그램 복제)와 `execl()`(다른 프로그램으로 바꿔 실행)로 백엔드(`_build/a.out`)를 **자동으로 함께 실행**  
+  창을 닫을 때는 백엔드에 `QUIT` 메시지를 보내 **같이 종료**시키므로, 혼자 남아 돌아가는 프로그램(고아 프로세스)을 방지  
+- **우편함 두 개 사용**  
+  "명령을 보내는 우편함"과 "결과를 받는 우편함"을 따로 두어, 보낸 편지와 받은 편지가 섞이지 않는다.
 
 ---
 
-## 2. 시스템 아키텍처 & 핵심 설계 (System Architecture)
+### 2.2 메시지 규칙 (어떤 번호가 어떤 명령인가)
 
-### 2.1 프로세스 분리 및 IPC 통신 모델
+메시지마다 **번호(`mtype`)** 를 붙여서, 백엔드가 번호만 보고 어떤 작업인지 알 수 있게 설정.  
+두 개의 값이 필요한 명령은 `$` 기호로 구분 (예: `old.txt$new.txt`)
 
-GTK UI 메인 프로세스가 파일 I/O나 무거운 시스템 작업을 직접 수행할 경우 UI 프리징(멈춤)이 발생할 수 있습니다. 이를 방지하기 위해 **프론트엔드와 백엔드를 독립된 프로세스로 분리**하고 **System V Message Queue**로 통신하도록 설계했습니다.
-1. **프로세스 라이프사이클 관리**: UI 프로그램 실행 시 `fork()`와 `execl("./_build/a.out")`을 호출하여 백엔드 데몬을 자식 프로세스로 자동 구동합니다. UI 종료 시(`on_application_shutdown`) 백엔드에 종료 신호(Type 1: `QUIT`)를 전달하여 고아 프로세스 생성을 방지합니다.
-2. **IPC 메시지 큐 분리**: 명령 전달용(`command_keyfile`)과 결과 응답용(`response_keyfile`) 큐를 물리적으로 분리하여 메시지 혼선을 방지했습니다.
+| 번호 | 명령 | 보내는 내용 | 백엔드가 하는 일 |
+|:---:|:---|:---|:---|
+| **1** | 종료 | `"QUIT"` | 백엔드 프로그램을 안전하게 종료 |
+| **2** | 삭제 | `삭제할 경로` | 파일 삭제, 폴더면 안쪽 내용까지 모두 삭제 |
+| **3** | 새 폴더 | `만들 폴더 경로` | 폴더 생성 (같은 이름이 있으면 자동으로 번호를 붙임) |
+| **4** | 이름 변경 | `기존이름$새이름` | 파일/폴더 이름 바꾸기 |
+| **5** | 이동 | `원본경로$목적지경로` | 이동 시도 → 안 되면 복사 후 원본 삭제 |
+| **6** | 복사 | `원본경로$목적지경로` | 파일/폴더 복사 (원래 권한도 그대로 유지) |
+| **7** | 권한 변경 | `경로$권한숫자` | 읽기/쓰기/실행 권한 변경 (예: `755`) |
+| **8** | 즐겨찾기 | `원본경로$링크경로` | `/tmp/link` 폴더에 바로가기(심볼릭 링크) 생성 |
+| **10** | **작업 결과** | `"success"` / `"failed"` | 백엔드 → 화면으로 결과 전달, 화면 새로고침 |
 
----
-
-### 2.2 System V Message Queue 프로토콜 정의
-
-메시지 큐 버퍼 구조체(`struct mymsgbuf`)의 `mtype`을 기반으로 요청 명령을 라우팅합니다.
-
-| `mtype` | 메시지 성격 | 페이로드 포맷 (`mtext`) | 백엔드 처리 동작 (POSIX API) |
-|:---:|:---:|:---|:---|
-| **1** | System Control | `"QUIT"` | 백엔드 프로세스 안전 종료 |
-| **2** | Delete | `target_path` | 파일(`unlink`) 또는 디렉토리 재귀 삭제(`nftw`) |
-| **3** | Mkdir | `dir_path` | 디렉토리 생성(`mkdir`, 중복 시 자동 넘버링 접미사 처리) |
-| **4** | Rename | `old_name$new_name` | 파일/폴더 이름 변경(`rename`, `strtok_r`) |
-| **5** | Move | `src_path$dest_path` | 이동 (`rename` 우선 시도 $\rightarrow$ 실패 시 `opendir`/`readdir` 복사 후 원본 삭제) |
-| **6** | Copy | `src_path$dest_path` | 파일(`fread`/`fwrite` 버퍼 스트림) 및 디렉토리 재귀 복사 + 권한 보존(`chmod`) |
-| **7** | Chmod | `path$octal_mode` | 파일/폴더 권한 변경 (`strtol(..., 8)` $\rightarrow$ `chmod`) |
-| **8** | Favorite (Symlink) | `src_path$dest_path` | `/tmp/link` 내 심볼릭 링크 생성/갱신 (`symlink`, `unlink`) |
-| **10** | **Backend Response** | `"success"` / `"failed"` | UI로 작업 결과 통보 및 비동기 화면 갱신 트리거 |
+> 💡 사용한 시스템 콜: 삭제 `unlink`, `nftw` / 폴더 생성 `mkdir` / 이름 변경·이동 `rename` / 권한 `chmod` / 링크 `symlink`
 
 ---
 
-### 2.3 논블로킹(Non-blocking) UI 비동기 동기화
+### 2.3 화면이 멈추지 않게 결과 기다리기
 
-단일 스레드 기반의 GTK4 이벤트 루프 환경에서 백엔드 응답을 동기식(`Blocking`)으로 대기하면 사용자 인터페이스가 멈추게 됩니다.
+GTK는 **하나의 흐름(이벤트 루프)** 으로 화면을 그리고 클릭을 처리합니다.  
+여기서 "백엔드 답이 올 때까지 기다리기(블로킹)"를 하면 그동안 **창 전체가 멈춤**
+
+**"기다리지 않고, 1초마다 우편함을 들여다보는"** 방식을 사용
 
 ```c
-// communication.c: 비차단 방식의 응답 폴링
+// communication.c: 1초마다 응답 우편함을 확인하는 함수
 gboolean read_backend_message(gpointer user_data) {
     UserData *data = (UserData *)user_data;
     struct mymsgbuf mbuf;
     ...
-    // IPC_NOWAIT 플래그를 통해 큐에 메시지가 없어도 즉시 반환 (UI 프리징 방지)
+    // IPC_NOWAIT: 우편함이 비어 있으면 기다리지 않고 바로 돌아옴 → 화면이 멈추지 않음
     if (msgrcv(response_msgid, &mbuf, sizeof(mbuf.mtext), 10, IPC_NOWAIT) != -1) {
         on_backend_message_received(mbuf.mtext, data);
     }
-    return TRUE; // GLib Timer 유지
+    return TRUE; // TRUE를 반환하면 1초 뒤 다시 실행됨
 }
 ```
-* `g_timeout_add(1000, read_backend_message, data)`를 통해 1초 주기로 백엔드 응답을 비차단 폴링합니다.
-* 응답(`"success"`) 수신 시 `g_timeout_add`로 렌더링 타이밍을 분산(`update` +200ms, `update_favorites_list` +300ms)하여 대량의 파일 갱신 시에도 부드러운 UI 반응성을 확보했습니다.
+
+- `g_timeout_add(1000, read_backend_message, data)` → **1초마다** 위 함수를 자동 실행
+- `"success"` 응답을 받으면 화면을 바로 다시 그리지 않고 **조금씩 시간 차를 두어** 새로고침
+  - 파일 목록: 0.2초 뒤
+  - 즐겨찾기 목록: 0.3초 뒤
+  - 이렇게 하면 파일 작업이 완전히 끝난 뒤에 화면이 갱신되고, 한꺼번에 몰려 버벅이는 일이 줄어듬.
 
 ---
 
-### 2.4 Custom Shell 샌드박스 보안 설계
+### 2.4 커스텀 셸의 안전장치 (샌드박스)
 
-커스텀 셸(`custom_shell`)은 사용자가 임의의 루트 디렉토리를 훼손하지 못하도록 `/tmp/test` 영역을 논리적 루트(`/`)로 취급하는 **샌드박스(Jail)** 환경을 갖추고 있습니다.
+커스텀 셸은 실제 컴퓨터의 `/tmp/test` 폴더를 **셸 안에서의 최상위 폴더(`/`)** 처럼 제공  
+사용자는 이 폴더 **바깥으로는 절대 나갈 수 없다.**
 
-* **경로 정규화 (`convert_to_absolute`)**: `.`(현재 디렉토리) 및 `..`(상위 디렉토리) 토큰을 스택 방식으로 계산하여 실제 도달할 정규화된 절대 경로를 사전에 계산합니다.
-* **샌드박스 탈출 검증 (`is_valid_path`)**: 정규화된 경로가 `BASE_PATH`(`/tmp/test`) 접두사를 벗어나는 경우 시스템 콜 호출을 즉시 차단합니다.
-* **명령어 디스패치 테이블 (`cmd_t`)**: 함수 포인터 배열 구조를 도입하여 O(1) 수준의 빠른 디스패칭과 컴파일 타임 매크로 분기(`ENABLE_CMD_*`)를 지원합니다.
+```plaintext
+실제 컴퓨터                    셸 안에서 보이는 모습
+/tmp/test          ────▶       /
+/tmp/test/docs     ────▶       /docs
+/tmp               ────▶       (접근 불가 🚫)
+```
+
+동작 순서는 다음과 같습니다.  
+1. **경로 정리하기** (`convert_to_absolute`)  
+   입력한 경로에서 `.`(현재 폴더)와 `..`(상위 폴더)를 계산해, **실제로 도착하게 될 최종 경로**를 미리 구함.  
+   예: `/tmp/test/a/../b` → `/tmp/test/b`
+2. **범위 검사하기** (`is_valid_path`)  
+   최종 경로가 `/tmp/test`로 시작하지 않으면 **명령을 실행하지 않고 막습니다.**
+3. **명령어 표로 빠르게 찾기** (`cmd_t`)  
+   명령어 이름과 실행할 함수를 표(배열)로 정리해 두어, 입력한 명령에 맞는 함수를 바로 찾아 실행합니다.
+   또 설정 파일(`config.h`)의 `ENABLE_CMD_*` 값으로 특정 명령어를 켜고 끌 수 있습니다.
 
 ---
 
-## 3. 주요 모듈 및 기술 상세 (Key Features)
+## 3. 모듈별 기능 소개
 
-### 모듈 1: GTK4 File Manager (`dir_manage_gtk`)
+### 모듈 1: GTK 파일 관리자 (`dir_manage_gtk`)
 
-| 구분 | 구현 기능 | 주요 기술 및 시스템 콜 |
+윈도우 탐색기처럼 마우스로 파일을 다루는 프로그램
+
+| 기능 | 할 수 있는 것 | 사용 기술 |
 |:---|:---|:---|
-| **파일 탐색 & 뷰** | • 다중 컬럼 파일 브라우징 (아이콘, 이름, 크기, 수정시간)<br>• 주소 표시줄 직접 이동 및 상위 폴더 이동 | `GtkColumnView`, `GtkDirectoryList`, `GFileInfo`, `GFile` |
-| **파일/폴더 관리** | • 우클릭 컨텍스트 메뉴를 통한 직관적 조작<br>• 폴더 생성, 이름 변경, 안전 삭제 | `GtkGestureClick`, `GtkDialog`, `mkdir`, `rename`, `unlink` |
-| **재귀적 파일 제어** | • 비어있지 않은 디렉토리의 전체 트리 삭제<br>• 파일 및 디렉토리 복사/이동 (스트림 버퍼링) | `nftw(FTW_DEPTH)`, `opendir`, `readdir`, `fread`/`fwrite`, `chmod` |
-| **권한 & 바로가기** | • 파일/디렉토리 8진수 퍼미션 변경<br>• 심볼릭 링크 기반 즐겨찾기(Favorites) 사이드바 | `chmod`, `strtol`, `symlink`, `GtkListBox` |
+| **파일 보기** | • 아이콘, 이름, 크기, 수정 시간을 표로 표시<br>• 주소창에 경로를 입력해 바로 이동, 상위 폴더로 이동 | `GtkColumnView`, `GtkDirectoryList`, `GFile` |
+| **파일/폴더 관리** | • 마우스 오른쪽 클릭 메뉴 제공<br>• 새 폴더 만들기, 이름 바꾸기, 삭제 | `GtkGestureClick`, `GtkDialog`, `mkdir`, `rename`, `unlink` |
+| **폴더 통째로 다루기** | • 안에 내용이 있는 폴더도 한 번에 삭제<br>• 파일·폴더 복사 및 이동 | `nftw`, `opendir`, `readdir`, `fread`/`fwrite` |
+| **권한 & 즐겨찾기** | • 파일 권한 변경 (예: `755`)<br>• 자주 가는 폴더를 왼쪽 사이드바에 즐겨찾기로 등록 | `chmod`, `symlink`, `GtkListBox` |
 
-### 모듈 2: Sandboxed Custom Shell (`custom_shell`)
+### 모듈 2: 안전한 커스텀 셸 (`custom_shell`)
 
-* **내장 명령어 지원**:
-  * **디렉토리 제어**: `cd`, `mkdir`, `rmdir`, `ls` (옵션 `-a`, `-l`, `-al` 포맷팅 완벽 지원)
-  * **파일 제어**: `cat`, `cp`, `rm`, `rename`, `chmod`
-  * **링크 관리**: `ln` (하드링크 `link` 및 심볼릭 링크 `symlink -s`)
-  * **프로세스 관리**: `ps` (`/proc` 파싱을 통한 PID/상태 출력), `kill` (`kill` 시스템 콜)
-  * **외부 프로그램 실행**: `run` (`fork`, `execv`/`execvp`, `waitpid`)
-* **시그널 제어**: `signal(SIGINT, SIG_IGN)` 설정을 통해 Ctrl+C 입력 시 셸 프로세스가 비정상 종료되는 것을 방지
+`/tmp/test` 폴더 안에서만 동작하는 명령어 입력 프로그램
 
-### 모듈 3: IPC 분석 & Docker 멀티 컨테이너 소켓 (`IPC`, `virtual_container`)
+| 분류 | 명령어 | 설명 |
+|:---|:---|:---|
+| **폴더** | `cd`, `mkdir`, `rmdir`, `ls` | 폴더 이동·생성·삭제·목록 보기 (`ls -a`: 숨김 파일 포함, `ls -l`: 자세히 보기, `ls -al`: 둘 다) |
+| **파일** | `cat`, `cp`, `rm`, `rename`, `chmod` | 파일 내용 보기·복사·삭제·이름 변경·권한 변경 |
+| **링크** | `ln`, `ln -s` | 하드 링크 / 심볼릭 링크(바로가기) 만들기 |
+| **프로세스** | `ps`, `kill` | 실행 중인 프로그램 목록 보기 (`/proc` 폴더 정보를 읽어서 표시), 프로그램 강제 종료 |
+| **외부 실행** | `run` | 다른 프로그램 실행 (`fork` → `execv` → `waitpid` 순서로 실행하고 끝날 때까지 대기) |
 
-* **SysV IPC 5종 메커니즘 비교 구현 (`IPC/`)**:
-  1. `01_pipe.c`: 익명 단방향 파이프 (`pipe`, `fork`)
-  2. `02_named_pipe.c`: FIFO 파일 기반 양방향 통신 (`mkfifo`, `open`, `read`, `write`)
-  3. `03_shared_memory.c`: 공유 메모리 세그먼트 할당 및 참조 (`shmget`, `shmat`, `shmdt`, `shmctl`)
-  4. `04_semaphore.c`: 임계 구역 동기화 및 락 제어 (`semget`, `semop`, `semctl`)
-  5. `05_message_queue.c`: 구조화된 비동기 메시징 (`msgget`, `msgsnd`, `msgrcv`)
-* **Docker Compose 기반 TCP 소켓 통신 (`virtual_container/`)**:
-  * 격리된 브릿지 네트워크 환경에서 `socket-server`와 `socket-client` 간 `AF_INET` TCP 스트림 소켓 통신 환경 구성
+- **Ctrl+C 보호**: Ctrl+C를 눌러도 셸 자체가 꺼지지 않도록 설정 (`signal(SIGINT, SIG_IGN)` = "Ctrl+C 신호 무시")
 
----
+### 모듈 3: 프로그램 간 통신 연습 & Docker 통신 (`IPC`, `virtual_container`)
 
-## 4. 기술적 난제 및 문제 해결 (Engineering Challenges & Troubleshooting)
+**① 리눅스의 5가지 통신 방법 비교 (`IPC/`)**
 
-### Q1. GTK4 단일 이벤트 루프에서 백엔드 IPC 대기 시 UI 프리징 현상
-* **문제 상황**: 백엔드에서 대용량 파일 복사나 재귀 삭제를 수행하는 동안 `msgrcv`를 블로킹 모드로 호출하면 GTK UI의 이벤트 루프가 멈춰 창이 응답 없음 상태에 빠짐.
-* **해결 방안**:
-  1. `msgrcv` 호출 시 `IPC_NOWAIT` 플래그를 설정하여 메시지가 없으면 에러(`ENOMSG`)를 반환하고 즉시 제어권을 반환하도록 구성.
-  2. GLib 메인 컨텍스트에 타이머 소스(`g_timeout_add(1000, ...)`)를 등록하여 백그라운드에서 주기적으로 비차단 폴링 수행.
-  3. UI 렌더링 갱신 시 `g_timeout_add`로 200ms의 완충 시간을 두어 파일 시스템 동기화 완료 후 뷰를 안전하게 리프레시.
+| 파일 | 방식 | 쉬운 비유 |
+|:---|:---|:---|
+| `01_pipe.c` | 익명 파이프 | 부모·자식 프로그램 사이에 연결된 **한 방향 파이프** |
+| `02_named_pipe.c` | 이름 있는 파이프 (FIFO) | 파일처럼 이름이 있어서 **아무 프로그램이나 연결 가능한 파이프** |
+| `03_shared_memory.c` | 공유 메모리 | 여러 프로그램이 함께 쓰는 **공용 메모리** |
+| `04_semaphore.c` | 세마포어 | 공용 메모리를 한 번에 한 명만 쓰도록 하는 **열쇠(잠금 장치)** |
+| `05_message_queue.c` | 메시지 큐 | 운영체제가 관리하는 **우편함** (파일 관리자에서 실제로 사용) |
+
+**② Docker 컨테이너끼리 네트워크 통신 (`virtual_container/`)**
+- Docker로 **서버용 가상 환경**과 **클라이언트용 가상 환경**을 각각 만들고, 둘을 전용 가상 네트워크로 연결
+- 두 환경이 **TCP 소켓**(인터넷 통신에서 쓰는 방식)으로 데이터를 주고받는다.
 
 ---
 
-### Q2. 비어있지 않은 대용량 디렉토리 삭제 시 `rmdir` 실패 처리
-* **문제 상황**: `rmdir()` 시스템 콜은 비어있는 디렉토리만 삭제 가능하므로, 내부에 파일이나 하위 디렉토리가 존재하는 폴더 삭제 시 `ENOTEMPTY` 오류 발생.
-* **해결 방안**:
-  * POSIX 파일 트리 순회 함수인 `nftw()`(New File Tree Walk) 도입.
-  * 플래그로 `FTW_DEPTH`(하위 항목을 먼저 방문하는 후위 순회)와 `FTW_PHYS`(심볼릭 링크 대상 추적 방지)를 지정하여 콜백 함수(`remove_callback`)에서 최하위 파일부터 안전하게 `remove()`/`unlink()`를 호출하도록 구현.
+## 4. 개발하며 부딪힌 문제와 해결 방법
+
+### 문제 1. 파일 작업 중 창이 "응답 없음"으로 멈춤
+
+- **문제**  
+  큰 파일을 복사하거나 폴더를 통째로 지우는 동안, 화면 프로그램이 백엔드의 답장을 **가만히 기다리느라** 창이 멈춤.
+- **해결**  
+  1. 답장을 확인할 때 `IPC_NOWAIT` 옵션을 써서, **답장이 없으면 기다리지 않고 바로 돌아오게**함
+  2. GTK 타이머(`g_timeout_add`)로 **1초마다 답장을 확인**
+  3. 답장을 받은 뒤 화면 새로고침에 **0.2초 여유**를 둬서, 파일 작업이 확실히 끝난 뒤 목록이 갱신
+
+---
+
+### 문제 2. 내용이 들어있는 폴더는 삭제되지 않음
+
+- **문제**  
+  폴더 삭제 함수 `rmdir()`는 **비어 있는 폴더만** 지울 수 있어서, 안에 파일이 있으면 `ENOTEMPTY`(폴더가 비어있지 않음) 오류
+- **해결**  
+  폴더 안을 전부 돌아다니며 처리해 주는 `nftw()` 함수를 사용
+  - `FTW_DEPTH`: **가장 안쪽 파일부터** 먼저 방문 → 안쪽부터 지워 나가면 결국 바깥 폴더도 빔
+  - `FTW_PHYS`: 바로가기(심볼릭 링크)를 따라가지 않음 → 바로가기가 가리키는 **원본까지 지워지는 사고를 방지**
 
 ```c
 // backend.c
@@ -160,153 +212,165 @@ int remove_file_or_directory(const char *path) {
     struct stat path_stat;
     if (stat(path, &path_stat) != 0) return -1;
 
-    if (S_ISDIR(path_stat.st_mode)) {
-        if (rmdir(path) == 0) return 0; // 빈 디렉토리 바로 삭제
-        // 비어있지 않은 경우 nftw 후위 순회로 하위 요소부터 재귀 삭제
+    if (S_ISDIR(path_stat.st_mode)) {           // 폴더라면
+        if (rmdir(path) == 0) return 0;         // 비어 있으면 바로 삭제
+        // 비어있지 않으면 가장 안쪽부터 하나씩 삭제
         return nftw(path, remove_callback, 64, FTW_DEPTH | FTW_PHYS);
     } else {
-        return unlink(path); // 일반 파일
+        return unlink(path);                    // 일반 파일이면 그냥 삭제
     }
 }
 ```
 
 ---
 
-### Q3. 상대 경로 입력에 따른 샌드박스 경로 탈출(Directory Traversal) 취약점
-* **문제 상황**: 커스텀 셸에서 사용자가 `cd ../../` 또는 `rm -rf /` 등의 경로를 입력할 경우 시스템의 실제 루트 디렉토리나 중요 파일이 손상될 위험 존재.
-* **해결 방안**:
-  * 입력 경로를 토큰 단위(`/`)로 분해하여 `.`과 `..`을 정규화하는 `convert_to_absolute()` 유틸리티 함수 구현.
-  * 최종 목적지 문자열이 `BASE_PATH`(`/tmp/test`)로 시작하는지 `strncmp`로 엄격하게 검증하여 탈출 시도를 사전에 원천 차단.
+### 문제 3. `../` 를 이용해 허용된 폴더 밖으로 빠져나갈 수 있음
+
+- **문제**  
+  셸에서 `cd ../../` 나 `rm -rf /` 같은 명령을 입력하면, **실제 컴퓨터의 중요한 폴더에 접근하거나 파일을 지울 위험**
+- **해결**  
+  1. 입력한 경로를 `/` 기준으로 잘라서 `.`과 `..`을 계산해 **최종 도착 경로**를 구함(`convert_to_absolute()`)
+  2. 그 경로가 `/tmp/test`로 시작하는지 `strncmp`(문자열 앞부분 비교)로 확인하고, 아니면 **실행 전에 막는다.**
 
 ---
 
-### Q4. 크로스 디바이스(Cross-Device) 및 대용량 파일 이동 시 `rename()` 실패 Fallback
-* **문제 상황**: `rename()` 시스템 콜은 동일한 파일 시스템(마운트 지점) 내에서만 원자적 이동이 가능하며, 파티션이 다르거나 디렉토리 구조가 복잡할 경우 `EXDEV` 오류를 발생시키며 실패함.
-* **해결 방안**:
-  * `move_directory()` 함수에서 1차적으로 `rename()`을 시도하고, 실패할 경우 8KB 스트림 버퍼 기반의 `copy_file()` $\rightarrow$ 원본 `remove_file_or_directory()` 2단계 트랜잭션 방식으로 Fallback 처리하여 안정성 보장.
+### 문제 4. 다른 디스크(파티션)로 이동할 때 `rename()` 실패
+
+- **문제**  
+  `rename()`은 **같은 디스크 안에서만** 파일을 옮길 수 있습니다. 다른 디스크로 옮기려 하면 `EXDEV`(다른 장치 간 이동 불가) 오류
+- **해결**  
+  **"먼저 쉬운 방법, 안 되면 대안"** 방식(Fallback)으로 처리
+  1. 먼저 `rename()`으로 이동을 시도
+  2. 실패하면 **8KB씩 나눠 읽고 쓰며 복사**한 뒤(`copy_file()`), **원본을 삭제**(`remove_file_or_directory()`).
 
 ---
 
-## 5. 기술 스택 & 개발 환경 (Tech Stack)
+## 5. 사용 기술
 
-| 분류 | 기술 스택 |
-|:---|:---|
-| **언어 (Language)** | `C (C99 Standard / POSIX.1-2001)` |
-| **GUI 프레임워크** | `GTK 4.0`, `GLib 2.0`, `GIO`, `GResource` |
-| **시스템 프로그래밍** | `System V IPC (Message Queue, Shared Memory, Semaphore)`, `POSIX Threads`, `Signals`, `Procfs` |
-| **빌드 시스템** | `Meson`, `Ninja`, `GNU Make`, `GCC` |
-| **가상화 & 컨테이너** | `Docker`, `Docker Compose` |
-| **타깃 환경** | `Linux (Ubuntu 22.04 LTS / Debian-based)` |
+| 분류 | 기술 | 설명 |
+|:---|:---|:---|
+| **언어** | C (C99, POSIX) | |
+| **화면(GUI)** | GTK 4, GLib, GIO, GResource | 창·버튼·목록 만들기, 타이머, 파일 정보 읽기, UI 파일 묶기 |
+| **시스템 기능** | System V IPC, Signals, `/proc` | 프로그램 간 통신, 시그널 처리, 실행 중인 프로그램 정보 읽기 |
+| **빌드 도구** | Meson, Ninja, Make, GCC | 소스 코드를 실행 파일로 만드는 도구 |
+| **가상 환경** | Docker, Docker Compose | 격리된 가상 환경(컨테이너) 만들기 및 여러 개 함께 실행 |
+| **운영체제** | Linux (Ubuntu 22.04 / Debian 계열) | |
 
 ---
 
-## 6. 프로젝트 디렉토리 구조 (Project Structure)
+## 6. 폴더 구조
 
 ```plaintext
 system-sw-gui-project/
-├── dir_manage_gtk/               # [모듈 1] GTK4 기반 GUI 파일 관리자
-│   ├── main.c                    # UI 초기화, 백엔드 fork/exec, 이벤트 액션 바인딩
-│   ├── backend.c                 # POSIX 파일 I/O 및 IPC 응답 처리 백엔드 데몬
-│   ├── communication.c           # Message Queue 통신 및 논블로킹 UI 폴링
-│   ├── header.h                  # 공유 구조체(UserData, mymsgbuf) 및 함수 프로토타입
-│   ├── ui_list.c                 # GtkColumnView 컬럼 렌더링 및 메타데이터 팩토리
-│   ├── ui_manage.c               # 우클릭 컨텍스트 메뉴 및 CRUD 다이얼로그
-│   ├── ui_cd.c                   # 디렉토리 이동, 복사/이동 액션 핸들러
-│   ├── ui_link.c                 # 즐겨찾기(Favorites) 심볼릭 링크 관리
-│   ├── column.ui                 # GtkBuilder XML UI 템플릿
-│   ├── column.gresource.xml      # GTK 리소스 번들 설정
-│   └── meson.build               # Meson 빌드 스크립트
+├── dir_manage_gtk/               # [모듈 1] GTK 파일 관리자
+│   ├── main.c                    # 프로그램 시작, 백엔드 자동 실행, 버튼 동작 연결
+│   ├── backend.c                 # 실제 파일 작업을 하는 백엔드 프로그램
+│   ├── communication.c           # 메시지 큐로 명령 보내기 / 1초마다 결과 확인
+│   ├── header.h                  # 공통으로 쓰는 구조체와 함수 목록
+│   ├── ui_list.c                 # 파일 목록 표(아이콘, 이름, 크기, 시간) 그리기
+│   ├── ui_manage.c               # 오른쪽 클릭 메뉴, 생성/이름변경/삭제 창
+│   ├── ui_cd.c                   # 폴더 이동, 복사/이동 기능
+│   ├── ui_link.c                 # 즐겨찾기(바로가기) 관리
+│   ├── column.ui                 # 화면 배치를 정의한 XML 파일
+│   ├── column.gresource.xml      # 화면 리소스 묶음 설정
+│   └── meson.build               # 빌드 설정
 │
-├── custom_shell/                 # [모듈 2] 샌드박스 커스텀 셸 (CLI)
-│   ├── main.c                    # 셸 프롬프트 루프, 시그널 핸들링, 커맨드 디스패처
-│   ├── path_utils.c              # 경로 정규화 및 샌드박스 유효성 검증
-│   ├── config.h / config.c       # 명령어 활성화 매크로 및 상수 정의
+├── custom_shell/                 # [모듈 2] 안전한 커스텀 셸
+│   ├── main.c                    # 명령 입력 반복, Ctrl+C 처리, 명령 실행 연결
+│   ├── path_utils.c              # 경로 계산 및 허용 범위 검사
+│   ├── config.h / config.c       # 명령어 켜기/끄기 설정, 기준 폴더(/tmp/test)
 │   ├── custom_header.h           # 공통 헤더
-│   ├── cmd_*.c                   # 개별 명령어 구현체 (ls, cd, mkdir, rm, cp, ps, kill, run 등)
-│   └── Makefile                  # GNU Make 빌드 스크립트
+│   ├── cmd_*.c                   # 명령어별 구현 (ls, cd, mkdir, rm, cp, ps, kill, run 등)
+│   └── Makefile                  # 빌드 설정
 │
-├── IPC/                          # [모듈 3] 리눅스 IPC 5종 학습 & 구현
-│   ├── 01_pipe.c                 # Anonymous Pipe
-│   ├── 02_named_pipe.c           # Named Pipe (FIFO)
-│   ├── 03_shared_memory.c        # Shared Memory
-│   ├── 04_semaphore.c            # Semaphore
-│   └── 05_message_queue.c        # Message Queue
+├── IPC/                          # [모듈 3] 리눅스 통신 방법 5가지 예제
+│   ├── 01_pipe.c                 # 익명 파이프
+│   ├── 02_named_pipe.c           # 이름 있는 파이프 (FIFO)
+│   ├── 03_shared_memory.c        # 공유 메모리
+│   ├── 04_semaphore.c            # 세마포어
+│   └── 05_message_queue.c        # 메시지 큐
 │
-├── virtual_container/            # [모듈 4] Docker 멀티 컨테이너 TCP 통신
-│   ├── Dockerfile                # C 개발 환경 컨테이너 빌드
-│   ├── docker-compose.yml        # Server-Client 격리 네트워크 정의
-│   ├── tcp_server.c              # TCP 스트림 소켓 서버
-│   └── tcp_client.c              # TCP 스트림 소켓 클라이언트
+├── virtual_container/            # [모듈 3] Docker 컨테이너 간 TCP 통신
+│   ├── Dockerfile                # C 개발 환경 이미지 만들기
+│   ├── docker-compose.yml        # 서버·클라이언트 컨테이너와 네트워크 설정
+│   ├── tcp_server.c              # TCP 서버
+│   └── tcp_client.c              # TCP 클라이언트
 │
-└── README.md                     # 프로젝트 포트폴리오 문서
+└── README.md                     # 프로젝트 설명 문서
 ```
 
 ---
 
-## 7. 빌드 및 실행 가이드 (Getting Started)
+## 7. 빌드 및 실행 방법
 
-### 7.1 필수 패키지 설치 (Ubuntu/Debian 기준)
+### 7.1 필요한 프로그램 설치 (Ubuntu/Debian 기준)
 
 ```bash
 sudo apt update
 sudo apt install -y build-essential libgtk-4-dev meson ninja-build
 ```
 
+- `build-essential`: C 컴파일러(gcc)와 make
+- `libgtk-4-dev`: GTK 4 개발용 파일
+- `meson`, `ninja-build`: 파일 관리자 빌드 도구
+
 ---
 
-### 7.2 GTK File Manager 빌드 및 실행
+### 7.2 GTK 파일 관리자 실행
 
 ```bash
-# 1. 디렉토리 이동
+# 1. 폴더로 이동
 cd dir_manage_gtk
 
-# 2. Meson 빌드 설정 (빌드 디렉토리 생성)
+# 2. 빌드 준비 (_build 폴더 생성)
 meson setup _build
 
-# 3. Ninja 컴파일
+# 3. 빌드
 ninja -C _build
 
-# 4. GUI 파일 관리자 실행 (백엔드 a.out 프로세스는 자동으로 fork 실행됩니다)
+# 4. 실행 (백엔드 프로그램은 자동으로 함께 실행됩니다)
 ./_build/column
 ```
 
-> **주의**: 백엔드 프로세스(`a.out`)는 `main.c`의 `start_backend()`에 의해 `_build/a.out` 경로로 실행되므로, `_build` 디렉토리 내에서 실행 파일이 생성되어야 합니다.
+> ⚠️ **주의**: 백엔드는 `_build/a.out` 경로에서 실행되므로, 반드시 `dir_manage_gtk` 폴더에서 위 명령을 실행
 
 ---
 
-### 7.3 Custom Shell 빌드 및 실행
+### 7.3 커스텀 셸 실행
 
 ```bash
-# 1. 디렉토리 이동
+# 1. 폴더로 이동
 cd custom_shell
 
-# 2. 컴파일
+# 2. 빌드
 make
 
-# 3. 셸 실행
+# 3. 실행
 ./program
 ```
 
+**사용 예시**
+
 ```plaintext
-# 샌드박스 셸 프롬프트 예시
-/ $ mkdir test_dir
-/ $ cd test_dir
-/test_dir $ ls -al
-/test_dir $ cd ../../  (샌드박스 외부 접근 시 자동으로 / 로 제한)
-/ $ quit
+/ $ mkdir test_dir          ← 새 폴더 만들기
+/ $ cd test_dir             ← 폴더로 이동
+/test_dir $ ls -al          ← 숨김 파일 포함 자세히 보기
+/test_dir $ cd ../../       ← 허용 범위 밖으로 나가려 해도
+/ $                         ← 최상위(/tmp/test)에서 멈춤
+/ $ quit                    ← 종료
 ```
 
 ---
 
-### 7.4 Virtual Container (Docker 소켓 통신) 실행
+### 7.4 Docker 소켓 통신 실행
 
 ```bash
+# 1. 폴더로 이동
 cd virtual_container
 
-# 컨테이너 빌드 및 실행
+# 2. 컨테이너 만들고 백그라운드에서 실행
 docker compose up -d
 
-# 클라이언트 로그 확인
+# 3. 클라이언트 출력(로그) 실시간 확인
 docker compose logs -f client
 ```
-
