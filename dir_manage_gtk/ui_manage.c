@@ -160,6 +160,7 @@ void on_delete_response(GtkDialog *dialog, int response, gpointer user_data) {
 		g_free(file_path);
     }
 	// g_object_unref(dialog);
+    start_backend_check(data);
 	gtk_window_close(GTK_WINDOW(dialog));
 }
 
